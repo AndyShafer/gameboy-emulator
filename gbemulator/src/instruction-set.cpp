@@ -7,12 +7,15 @@
 #define READ_ADDR16(X) memory->read8((X))
 #define WRITE_ADDR8(X, Y) memory->write8(0xFF00 + (X), (Y))
 #define WRITE_ADDR16(X, Y) memory->write8((X), (Y))
-#define PREINC(REG) ++REG
-#define PREDEC(REG) --REG
-#define POSTINC(REG) REG++
-#define POSTDEC(REG) REG++
+#define READ16(X) memory->read16((X))
+#define WRITE16(X, Y) memory->write16((X), (Y))
+#define PREINC(REG) ++(REG)
+#define PREDEC(REG) --(REG)
+#define POSTINC(REG) (REG)++
+#define POSTDEC(REG) (REG)++
 #define N READ_ADDR16(POSTINC(REG16(PC)))
 #define NN N + (N << 4)
+#define SIGNED_IMM static_cast<int8_t>(N)
 
 namespace gbemulator {
 
@@ -161,6 +164,84 @@ namespace gbemulator {
 			REG8(A) = READ_ADDR8(NN);
 			return OK;
 		};
+		// 16-bit loads
+		// LD XX,nn
+		for(int i = 0x0; i <= 0x3; ++i) {
+			instructions[(i << 4) + 0x1] = [&registers, &memory, i]() {
+				REG16(i) = READ_ADDR16(NN);
+				return OK;
+			};
+		}
+		// LD (nn),SP
+		instructions[0x08] = [&registers, &memory]() {
+			if(WRITE_ADDR16(NN, REG16(SP))) {
+				return OK;
+			}
+			return WRITE_FAIL;
+		};
+		// POP BC
+		instructions[0xC1] = [&registers, &memory]() {
+			REG16(BC) = READ16(POSTINC(REG16(SP)));
+			PREINC(REG16(SP));
+			return OK;
+		};
+		// POP DE
+		instructions[0xD1] = [&registers, &memory]() {
+			REG16(DE) = READ16(POSTINC(REG16(SP)));
+			PREINC(REG16(SP));
+			return OK;
+		};
+		// POP HL
+		instructions[0xE1] = [&registers, &memory]() {
+			REG16(HL) = READ16(POSTINC(REG16(SP)));
+			PREINC(REG16(SP));
+			return OK;
+		};
+		// POP AF
+		instructions[0xF1] = [&registers, &memory]() {
+			REG16(AF) = READ16(POSTINC(REG16(SP)));
+			PREINC(REG16(SP));
+			return OK;
+		};
+		// PUSH BC
+		instructions[0xC5] = [&registers, &memory]() {
+			if(WRITE16(PREDEC(PREDEC(REG16(SP))), REG16(BC))) {
+				return OK;
+			}
+			return WRITE_FAIL;
+		};
+		// PUSH DE
+		instructions[0xD5] = [&registers, &memory]() {
+			if(WRITE16(PREDEC(PREDEC(REG16(SP))), REG16(DE))) {
+				return OK;
+			}
+			return WRITE_FAIL;
+		};
+		// PUSH HL
+		instructions[0xE5] = [&registers, &memory]() {
+			if(WRITE16(PREDEC(PREDEC(REG16(SP))), REG16(HL))) {
+				return OK;
+			}
+			return WRITE_FAIL;
+		};
+		// PUSH AF
+		instructions[0xF5] = [&registers, &memory]() {
+			if(WRITE16(PREDEC(PREDEC(REG16(SP))), REG16(AF))) {
+				return OK;
+			}
+			return WRITE_FAIL;
+		};
+		// LD HL,SP+e
+		instructions[0xF8] = [&registers, &memory]() {
+			REG16(HL) = REG16(SP) + SIGNED_IMM;
+			return OK;
+		};
+		// LD SP,HL
+		instructions[0xF9] = [&registers, &memory]() {
+			REG16(SP) = REG16(HL);
+			return OK;
+		};
+		
 	}
 
 	// Returns a status code.
