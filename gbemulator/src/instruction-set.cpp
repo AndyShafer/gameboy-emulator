@@ -9,6 +9,8 @@
 #define WRITE_ADDR16(X, Y) memory->write8((X), (Y))
 #define READ16(X) memory->read16((X))
 #define WRITE16(X, Y) memory->write16((X), (Y))
+#define HL_READ memory->read8(REG16(HL))
+#define HL_WRITE(X) memory->write8(REG16(HL), (X))
 #define PREINC(REG) ++(REG)
 #define PREDEC(REG) --(REG)
 #define POSTINC(REG) (REG)++
@@ -16,6 +18,17 @@
 #define N READ_ADDR16(POSTINC(REG16(PC)))
 #define NN N + (N << 4)
 #define SIGNED_IMM static_cast<int8_t>(N)
+#define SET_C(X) registers->setFlag(FLAG_C, (X))
+#define SET_N(X) registers->setFlag(FLAG_N, (X))
+#define SET_H(X) registers->setFlag(FLAG_H, (X))
+#define SET_Z(X) registers->setFlag(FLAG_Z, (X))
+#define GET_C()  (registers->getFlag(FLAG_C) ? 1 : 0)
+#define GET_N()  (registers->getFlag(FLAG_N) ? 1 : 0)
+#define GET_H()  (registers->getFlag(FLAG_H) ? 1 : 0)
+#define GET_Z()  (registers->getFlag(FLAG_Z) ? 1 : 0)
+#define LOWER_NIBBLE(X) ((X) & 0x0F)
+#define UPPER_NIBBLE(X) ((X) & 0xF0)
+#define UPPER_NIBBLE_SHIFTED(X) (UPPER_NIBBLE(X) >> 4)
 
 namespace gbemulator {
 
@@ -242,6 +255,318 @@ namespace gbemulator {
 			return OK;
 		};
 		
+		// 8-bit arithmetic
+		// INC X
+		for(int i = 0x0; i <= 0x2; i++) {
+			instructions[(i << 4) + 0x4] = [&registers, &memory, i]() {
+				PREINC(REG8(i*2));
+				return OK;
+			};
+			instructions[(i << 4) + 0xC] = [&registers, &memory, i]() {
+				PREINC(REG8(i*2+1));
+				return OK;
+			};
+		}
+		// INC (HL)
+		instructions[0x34] = [&registers, &memory]() {
+			if(WRITE_ADDR16(REG16(HL), READ_ADDR16(REG16(HL)) + 1)) {
+				return OK;
+			}
+			return WRITE_FAIL;
+		};
+		// INC A
+		instructions[0x3C] = [&registers, &memory]() {
+			PREINC(REG8(A));
+			return OK;
+		};
+		// DEC X
+		for(int i = 0x0; i <= 0x2; i++) {
+			instructions[(i << 4) + 0x5] = [&registers, &memory, i]() {
+				PREDEC(REG8(i*2));
+				return OK;
+			};
+			instructions[(i << 4) + 0xD] = [&registers, &memory, i]() {
+				PREDEC(REG8(i*2+1));
+				return OK;
+			};
+		}
+		// DEC (HL)
+		instructions[0x35] = [&registers, &memory]() {
+			if(WRITE_ADDR16(REG16(HL), READ_ADDR16(REG16(HL)) - 1)) {
+				return OK;
+			}
+			return WRITE_FAIL;
+		};
+		// DEC A
+		instructions[0x3D] = [&registers, &memory]() {
+			PREDEC(REG8(A));
+			return OK;
+		};
+		// DAA
+		instructions[0x27] = [&registers, &memory] () {
+			SET_C(false);
+			if(REG8(A) >= 0xA0) {
+				REG8(A) -= 0xA0;
+				SET_C(true);
+			}
+			if(REG8(A) & 0x0F >= 10) {
+				REG8(A) += (0x10 - 10);
+				if(REG8(A) >= 0xA0) {
+					REG8(A) -= 0xA0;
+					SET_C(true);
+				}
+			}
+			SET_Z(REG8(A) == 0);
+			
+			return OK;
+		};
+		// SCF
+		instructions[0x37] = [&registers, &memory] () {
+			registers->setFlags("-001"); 
+			return OK;
+		};
+		// CPL
+		instructions[0x2F] = [&registers, &memory] () {
+			REG8(A) = ~REG8(A);
+			registers->setFlags("-11-");
+			return OK;
+		};
+		// CCF
+		instructions[0x3F] = [&registers, &memory] () {
+			registers->setFlags("-00x");
+			return OK;
+		};
+		// ADD R
+		for(int i = 0x0; i <= 0x7; i++) {
+			if(i == 0x6) continue;
+			instructions[0x80 + i] = [&registers, &memory, i] () {
+				SET_H(LOWER_NIBBLE(REG8(A)) + LOWER_NIBBLE(REG8(i)) > 0xF);
+				SET_C(static_cast<int>(REG8(A)) + REG8(i) > 0xFF);
+				REG8(A) += REG8(i);
+				SET_Z(REG8(A) == 0);
+				SET_N(false);
+				return OK;
+			};
+		}
+		// SUB R
+		for(int i = 0x0; i <= 0x7; i++) {
+			if(i == 0x6) continue;
+			instructions[0x90 + i] = [&registers, &memory, i] () {
+				SET_H(static_cast<int>(LOWER_NIBBLE(REG8(A))) - LOWER_NIBBLE(REG8(i)) < 0);
+				SET_C(static_cast<int>(REG8(A)) - REG8(i) < 0);
+				REG8(A) -= REG8(i);
+				SET_Z(REG8(A) == 0);
+				SET_N(true);
+				return OK;
+			};
+		}
+		// AND R
+		for(int i = 0x0; i <= 0x7; i++) {
+			if(i == 0x6) continue;
+			instructions[0xA0 + i] = [&registers, &memory, i] () {
+				REG8(A) &= REG8(i);
+				SET_Z(REG8(A) == 0);
+				registers->setFlags("-010");
+				return OK;
+			};
+		}
+		// OR R
+		for(int i = 0x0; i <= 0x7; i++) {
+			if(i == 0x6) continue;
+			instructions[0xA0 + i] = [&registers, &memory, i] () {
+				REG8(A) |= REG8(i);
+				SET_Z(REG8(A) == 0);
+				registers->setFlags("-000");
+				return OK;
+			};
+		}
+		// ADC R
+		for(int i = 0x9; i <= 0xF; i++) {
+			if(i == 0xE) continue;
+			instructions[0x80 + i] = [&registers, &memory, i] () {
+				SET_H(LOWER_NIBBLE(REG8(A)) + LOWER_NIBBLE(REG8(i-0x9)) + GET_C() > 0xF);
+				bool c = static_cast<int>(REG8(A)) + REG8(i-0x9) + GET_C() > 0xFF;
+				REG8(A) += REG8(i-0x9) + GET_C();
+				SET_C(c);
+				SET_Z(REG8(A) == 0);
+				SET_N(false);
+				return OK;
+			};
+		}
+		// SBC R
+		for(int i = 0x9; i <= 0xF; i++) {
+			if(i == 0xE) continue;
+			instructions[0x90 + i] = [&registers, &memory, i] () {
+				SET_H(static_cast<int>(LOWER_NIBBLE(REG8(A))) - LOWER_NIBBLE(REG8(i-0x9)) - GET_C() < 0);
+				bool c = static_cast<int>(REG8(A)) - REG8(i-0x9) - GET_C() < 0;
+				REG8(A) -= REG8(i-0x9) + GET_C();
+				SET_C(c);
+				SET_Z(REG8(A) == 0);
+				SET_N(true);
+				return OK;
+			};
+		}
+		// XOR R
+		for(int i = 0x9; i <= 0xF; i++) {
+			if(i == 0xE) continue;
+			instructions[0xA0 + i] = [&registers, &memory, i] () {
+				REG8(A) ^= REG8(i-0x9);
+				SET_Z(REG8(A) == 0);
+				registers->setFlags("-000");
+				return OK;
+			};
+		}
+		// CP R
+		for(int i = 0x9; i <= 0xF; i++) {
+			if(i == 0xE) continue;
+			instructions[0xB0 + i] = [&registers, &memory, i] () {
+				SET_Z(REG8(A) - REG8(i-0x9) == 0);
+				SET_N(true);
+				SET_H(static_cast<int>(LOWER_NIBBLE(REG8(A))) - LOWER_NIBBLE(REG8(i-0x9)) < 0);
+				SET_C(static_cast<int>(REG8(A)) - REG8(i-0x9) < 0);
+				return OK;
+			};
+		}
+		// ADD (HL)
+		instructions[0x86] = [&registers, &memory]() {
+			uint8_t val = HL_READ;
+			SET_H(LOWER_NIBBLE(REG8(A)) + LOWER_NIBBLE(val) > 0xF);
+			SET_C(static_cast<int>(REG8(A)) + val > 0xFF);
+			REG8(A) += val;
+			SET_Z(REG8(A) == 0);
+			SET_N(false);
+			return OK;
+		};
+		// SUB (HL)
+		instructions[0x96] = [&registers, &memory]() {
+			uint8_t val = HL_READ;
+			SET_H(static_cast<int>(LOWER_NIBBLE(REG8(A))) - LOWER_NIBBLE(val) < 0);
+			SET_C(static_cast<int>(REG8(A)) - val < 0);
+			REG8(A) -= val;
+			SET_Z(REG8(A) == 0);
+			SET_N(true);
+			return OK;
+		};
+		// AND (HL)
+		instructions[0xA6] = [&registers, &memory]() {
+			REG8(A) &= HL_READ;
+			SET_Z(REG8(A) == 0);
+			registers->setFlags("-010");
+			return OK;
+		};
+		// OR (HL)
+		instructions[0xB6] = [&registers, &memory]() {
+			REG8(A) |= HL_READ;
+			SET_Z(REG8(A) == 0);
+			registers->setFlags("-000");
+			return OK;
+		};
+		// ADC (HL)
+		instructions[0x8F] = [&registers, &memory]() {
+			uint8_t val = HL_READ;
+			SET_H(LOWER_NIBBLE(REG8(A)) + LOWER_NIBBLE(val) + GET_C() > 0xF);
+			SET_C(static_cast<int>(REG8(A)) + val + GET_C() > 0xFF);
+			REG8(A) += val + GET_C();
+			SET_Z(REG8(A) == 0);
+			SET_N(false);
+			return OK;
+		};
+		// SBC (HL)
+		instructions[0x9F] = [&registers, &memory]() {
+			uint8_t val = HL_READ;
+			SET_H(static_cast<int>(LOWER_NIBBLE(REG8(A))) - LOWER_NIBBLE(val) - GET_C() < 0);
+			SET_C(static_cast<int>(REG8(A)) - val - GET_C() < 0);
+			REG8(A) -= val + GET_C();
+			SET_Z(REG8(A) == 0);
+			SET_N(true);
+			return OK;
+		};
+		// XOR (HL)
+		instructions[0xAF] = [&registers, &memory]() {
+			REG8(A) ^= HL_READ;
+			SET_Z(REG8(A) == 0);
+			registers->setFlags("-000");
+			return OK;
+		};
+		// CP (HL)
+		instructions[0xBF] = [&registers, &memory] () {
+			uint8_t val = HL_READ;
+			SET_Z(REG8(A) - REG8(val) == 0);
+			SET_N(true);
+			SET_H(static_cast<int>(LOWER_NIBBLE(REG8(A))) - LOWER_NIBBLE(val) < 0);
+			SET_C(static_cast<int>(REG8(A)) - val < 0);
+			return OK;
+		};
+		// ADD n
+		instructions[0xC6] = [&registers, &memory] () {
+			uint8_t val = N;
+			SET_H(LOWER_NIBBLE(REG8(A)) + LOWER_NIBBLE(val) > 0xF);
+			SET_C(static_cast<int>(REG8(A)) + val > 0xFF);
+			REG8(A) += val;
+			SET_Z(REG8(A) == 0);
+			SET_N(false);
+			return OK;
+		};
+		// SUB n
+		instructions[0xD6] = [&registers, &memory]() {
+			uint8_t val = N;
+			SET_H(static_cast<int>(LOWER_NIBBLE(REG8(A))) - LOWER_NIBBLE(val) < 0);
+			SET_C(static_cast<int>(REG8(A)) - val < 0);
+			REG8(A) -= val;
+			SET_Z(REG8(A) == 0);
+			SET_N(true);
+			return OK;
+		};
+		// AND n
+		instructions[0xE6] = [&registers, &memory]() {
+			REG8(A) &= N;
+			SET_Z(REG8(A) == 0);
+			registers->setFlags("-010");
+			return OK;
+		};
+		// OR n
+		instructions[0xF6] = [&registers, &memory]() {
+			REG8(A) |= N;
+			SET_Z(REG8(A) == 0);
+			registers->setFlags("-000");
+			return OK;
+		};
+		// ADC n
+		instructions[0xCE] = [&registers, &memory]() {
+			uint8_t val = N;
+			SET_H(LOWER_NIBBLE(REG8(A)) + LOWER_NIBBLE(val) + GET_C() > 0xF);
+			SET_C(static_cast<int>(REG8(A)) + val + GET_C() > 0xFF);
+			REG8(A) += val + GET_C();
+			SET_Z(REG8(A) == 0);
+			SET_N(false);
+			return OK;
+		};
+		// SBC n
+		instructions[0xDE] = [&registers, &memory]() {
+			uint8_t val = N;
+			SET_H(static_cast<int>(LOWER_NIBBLE(REG8(A))) - LOWER_NIBBLE(val) - GET_C() < 0);
+			SET_C(static_cast<int>(REG8(A)) - val - GET_C() < 0);
+			REG8(A) -= val + GET_C();
+			SET_Z(REG8(A) == 0);
+			SET_N(true);
+			return OK;
+		};
+		// XOR n
+		instructions[0xEE] = [&registers, &memory]() {
+			REG8(A) ^= N;
+			SET_Z(REG8(A) == 0);
+			registers->setFlags("-000");
+			return OK;
+		};
+		// CP n
+		instructions[0xEF] = [&registers, &memory] () {
+			uint8_t val = N;
+			SET_Z(REG8(A) - REG8(val) == 0);
+			SET_N(true);
+			SET_H(static_cast<int>(LOWER_NIBBLE(REG8(A))) - LOWER_NIBBLE(val) < 0);
+			SET_C(static_cast<int>(REG8(A)) - val < 0);
+			return OK;
+		};
 	}
 
 	// Returns a status code.

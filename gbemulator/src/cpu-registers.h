@@ -23,15 +23,22 @@ enum Register16Id {
 	PC = 5
 };
 
+enum Flag {
+	FLAG_Z = 7, // Zero
+	FLAG_N = 6, // Subtraction (BCD)
+	FLAG_H = 5, // Half Carry (BCD)
+	FLAG_C = 4  // Carry
+};
+
 struct Registers8BitView {
-	uint8_t C;
 	uint8_t B;
-	uint8_t E;
+	uint8_t C;
 	uint8_t D;
-	uint8_t L;
+	uint8_t E;
 	uint8_t H;
-	uint8_t F;
+	uint8_t L;
 	uint8_t A;
+	uint8_t F;
 };
 
 struct Registers16BitView {
@@ -68,6 +75,43 @@ union CpuRegisters {
 			case PC: return registers16.PC;
 		}
 		throw new std::invalid_argument("Could not map ID to register");
+	}
+	bool getFlag(Flag f) {
+		return registers8.F & (1 << f);
+	}
+	void setFlag(Flag f, bool value) {
+		if(value) {
+			registers8.F |= (1 << f);
+		} else {
+			registers8.F &= ~(1 << f);
+		}
+	}
+	void setFlag(Flag f, char op) {
+		switch(op) {
+			case '0':
+				this->setFlag(f, false);
+				return;
+			case '1':
+				this->setFlag(f, true);
+				return;
+			case 'x':
+				registers8.F ^= (1 << f);
+				return;
+			case '-':
+				return;
+		}
+	}
+	void setFlags(char z, char n, char h, char c) {
+		this->setFlag(FLAG_Z, z);
+		this->setFlag(FLAG_N, n);
+		this->setFlag(FLAG_H, h);
+		this->setFlag(FLAG_C, c);
+	}
+	void setFlags(std::string flags) {
+		this->setFlag(FLAG_Z, flags[0]);
+		this->setFlag(FLAG_N, flags[1]);
+		this->setFlag(FLAG_H, flags[2]);
+		this->setFlag(FLAG_C, flags[3]);
 	}
 };
 
