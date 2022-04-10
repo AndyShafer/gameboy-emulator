@@ -18,7 +18,8 @@ enum Register16Id {
 	BC = 0,
 	DE = 1,
 	HL = 2,
-	SP = 3
+	SP = 3,
+	PC = 4
 };
 
 struct Registers8BitView {
@@ -43,7 +44,7 @@ struct Registers16BitView {
 union CpuRegisters {
 	Registers8BitView registers8;
 	Registers16BitView registers16;
-	uint8_t& get8BitReg(Register8Id id) {
+	uint8_t& get8BitReg(int id) {
 		switch(id) {
 			case B: return registers8.B;
 			case C: return registers8.C;
@@ -55,12 +56,13 @@ union CpuRegisters {
 		}
 		throw new std::invalid_argument("Could not map ID to register");
 	}
-	uint16_t& get16BitReg(Register16Id id) {
+	uint16_t& get16BitReg(int id) {
 		switch(id) {
 			case BC: return registers16.BC;
 			case DE: return registers16.DE;
 			case HL: return registers16.HL;
 			case SP: return registers16.SP;
+			case PC: return registers16.PC;
 		}
 		throw new std::invalid_argument("Could not map ID to register");
 	}
