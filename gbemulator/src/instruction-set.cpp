@@ -18,10 +18,10 @@
 #define N READ_ADDR16(POSTINC(REG16(PC)))
 #define NN N + (N << 4)
 #define SIGNED_IMM static_cast<int8_t>(N)
-#define SET_C(X) registers->setFlag(FLAG_C, (X))
-#define SET_N(X) registers->setFlag(FLAG_N, (X))
-#define SET_H(X) registers->setFlag(FLAG_H, (X))
-#define SET_Z(X) registers->setFlag(FLAG_Z, (X))
+#define SET_C(X) registers->setFlag(FLAG_C, static_cast<bool>(X))
+#define SET_N(X) registers->setFlag(FLAG_N, static_cast<bool>(X))
+#define SET_H(X) registers->setFlag(FLAG_H, static_cast<bool>(X))
+#define SET_Z(X) registers->setFlag(FLAG_Z, static_cast<bool>(X))
 #define GET_C()  (registers->getFlag(FLAG_C) ? 1 : 0)
 #define GET_N()  (registers->getFlag(FLAG_N) ? 1 : 0)
 #define GET_H()  (registers->getFlag(FLAG_H) ? 1 : 0)
@@ -35,6 +35,7 @@ namespace gbemulator {
 	InstructionSet::InstructionSet(CpuRegisters *registers, MemoryMap *memory)
        		: registers(registers), memory(memory) {
 		instructions = std::vector<std::function<InstructionStatus()>>(0x100);
+		cbInstructions = std::vector<std::function<InstructionStatus()>>(0x100);
 
 		// NOP
 		instructions[0x00] = [](){ return OK; };
@@ -643,6 +644,44 @@ namespace gbemulator {
 			REG16(SP) += val;
 			return OK;
 		};
+
+		// Rotates, shifts, and bit operations
+		// RLCA
+		instructions[0x07] = [&registers, &memory]() {
+			SET_C(REG8(A) & (1 << 7));
+			REG8(A) <<= 1;
+			REG8(A) |= GET_C();
+			return OK;
+		};
+		// RLA
+		instructions[0x17] = [&registers, &memory]() {
+			int c = GET_C();
+			SET_C(REG8(A) & (1 << 7));
+			REG8(A) <<= 1;
+			REG8(A) |= c;
+			return OK;
+		};
+		// RRCA
+		instructions[0x0F] = [&registers, &memory]() {
+			SET_C(REG8(A) & 1);
+			REG8(A) >>= 1;
+			REG8(A) |= (GET_C() << 7);
+			return OK;
+		};
+		// RRA
+		instructions[0x1F] = [&registers, &memory]() {
+			int c = GET_C();
+			SET_C(REG8(A) & 1);
+			REG8(A) >>= 1;
+			REG8(A) |= (c << 7);
+			return OK;
+		};
+		// CB
+		instructions[0xCB] = [this, &registers, &memory]() {
+			uint8_t cb_op = N;
+			return this->cbInstructions[cb_op]();
+		};
+		
 
 	}
 

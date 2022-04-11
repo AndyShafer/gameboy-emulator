@@ -24,6 +24,7 @@ private:
 	CpuRegisters *registers;
 	MemoryMap *memory;
 	std::vector<std::function<InstructionStatus()>> instructions;
+	std::vector<std::function<InstructionStatus()>> cbInstructions;
 };
 
 }
