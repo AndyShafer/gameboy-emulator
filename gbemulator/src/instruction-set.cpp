@@ -850,7 +850,7 @@ namespace gbemulator {
 		// RETI
 		instructions[0xD9] = [&registers, &memory]() {
 			RET();
-			// TODO: Set IME=1
+			registers->registers16.IME = true;
 			return OK;
 		};
 		// RST n
@@ -864,9 +864,16 @@ namespace gbemulator {
 				return OK;
 			};
 		}
-
-
-
+		// EI
+		instructions[0xFB] = [&registers]() {
+			registers->registers16.IME = true;
+			return OK;
+		}
+		// DI
+		instructions[0xF3] = [&registers]() {
+			registers->registers16.IME = false;
+			return OK;
+		}
 	}
 
 	// Returns a status code.

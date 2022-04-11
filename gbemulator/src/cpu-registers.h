@@ -48,6 +48,7 @@ struct Registers16BitView {
 	uint16_t AF;
 	uint16_t PC;
 	uint16_t SP;
+	bool     IME;
 };
 
 union CpuRegisters {
