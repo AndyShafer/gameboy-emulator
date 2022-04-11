@@ -256,20 +256,30 @@ namespace gbemulator {
 		};
 		
 		// 8-bit arithmetic
-		// INC X
+		// INC R
 		for(int i = 0x0; i <= 0x2; i++) {
 			instructions[(i << 4) + 0x4] = [&registers, &memory, i]() {
 				PREINC(REG8(i*2));
+				SET_Z(REG8(i*2) == 0);
+				SET_N(false);
+				SET_H(LOWER_NIBBLE(REG8(i*2)) == 0);
 				return OK;
 			};
 			instructions[(i << 4) + 0xC] = [&registers, &memory, i]() {
 				PREINC(REG8(i*2+1));
+				SET_Z(REG8(i*2+1) == 0);
+				SET_N(false);
+				SET_H(LOWER_NIBBLE(REG8(i*2+1)) == 0);
 				return OK;
 			};
 		}
 		// INC (HL)
 		instructions[0x34] = [&registers, &memory]() {
-			if(WRITE_ADDR16(REG16(HL), READ_ADDR16(REG16(HL)) + 1)) {
+			uint8_t val = READ_ADDR16(REG16(HL)) + 1;
+			if(WRITE_ADDR16(REG16(HL), val)) {
+				SET_Z(val == 0);
+				SET_N(false);
+				SET_H(LOWER_NIBBLE(val) == 0);
 				return OK;
 			}
 			return WRITE_FAIL;
@@ -277,22 +287,35 @@ namespace gbemulator {
 		// INC A
 		instructions[0x3C] = [&registers, &memory]() {
 			PREINC(REG8(A));
+			SET_Z(REG8(A) == 0);
+			SET_N(false);
+			SET_H(LOWER_NIBBLE(REG8(A)) == 0);
 			return OK;
 		};
 		// DEC X
 		for(int i = 0x0; i <= 0x2; i++) {
 			instructions[(i << 4) + 0x5] = [&registers, &memory, i]() {
 				PREDEC(REG8(i*2));
+				SET_Z(REG8(i*2) == 0);
+				SET_N(true);
+				SET_H(LOWER_NIBBLE(REG8(i*2)) == 0);
 				return OK;
 			};
 			instructions[(i << 4) + 0xD] = [&registers, &memory, i]() {
 				PREDEC(REG8(i*2+1));
+				SET_Z(REG8(i*2+1) == 0);
+				SET_N(true);
+				SET_H(LOWER_NIBBLE(REG8(i*2+1)) == 0);
 				return OK;
 			};
 		}
 		// DEC (HL)
 		instructions[0x35] = [&registers, &memory]() {
-			if(WRITE_ADDR16(REG16(HL), READ_ADDR16(REG16(HL)) - 1)) {
+			uint8_t val = READ_ADDR16(REG16(HL)) - 1;
+			if(WRITE_ADDR16(REG16(HL), val)) {
+				SET_Z(val == 0);
+				SET_N(true);
+				SET_H(LOWER_NIBBLE(val) == 0);
 				return OK;
 			}
 			return WRITE_FAIL;
@@ -300,6 +323,9 @@ namespace gbemulator {
 		// DEC A
 		instructions[0x3D] = [&registers, &memory]() {
 			PREDEC(REG8(A));
+			SET_Z(REG8(A) == 0);
+			SET_N(false);
+			SET_H(LOWER_NIBBLE(REG8(A)) == 0);
 			return OK;
 		};
 		// DAA
@@ -567,6 +593,57 @@ namespace gbemulator {
 			SET_C(static_cast<int>(REG8(A)) - val < 0);
 			return OK;
 		};
+
+		// 16-bit arithmetic
+		// INC RR
+		for(int i = 0x0; i <= 0x3; ++i) {
+			instructions[(i << 4) + 0x3] = [&registers, &memory, i]() {
+				PREINC(REG16(i));
+				return OK;
+			};
+
+		}
+		// DEC RR
+		for(int i = 0x0; i <= 0x3; ++i) {
+			instructions[(i << 4) + 0xB] = [&registers, &memory, i]() {
+				PREDEC(REG16(i));
+				return OK;
+			};
+
+		}
+		// ADD HL,RR
+		for(int i = 0x0; i <= 0x3; ++i) {
+			instructions[(i << 4) + 0x9] = [&registers, &memory, i]() {
+				SET_N(false);
+				SET_H(LOWER_NIBBLE(REG16(HL)) + LOWER_NIBBLE(REG16(i)) > 0xF);
+				SET_C(REG16(HL) > 0xFFFF - REG16(i));
+				REG16(HL) += REG16(i);
+				return OK;
+			};
+		}
+		// ADD SP,e
+		instructions[0xE8] = [&registers, &memory]() {
+			SET_Z(false);
+			SET_N(false);
+			int8_t val = SIGNED_IMM;
+			if(val < 0 && LOWER_NIBBLE(val) > LOWER_NIBBLE(REG16(SP))) {
+				SET_H(true);
+			} else if(val > 0 && LOWER_NIBBLE(val) + LOWER_NIBBLE(REG16(SP))) {
+				SET_H(true);
+			} else {
+				SET_H(false);
+			}
+			if(val < 0 && (-1 * val) > REG16(SP)) {
+				SET_C(true);
+			} else if(val > 0 && val > 0xFFFF - REG16(SP)) {
+				SET_C(true);
+			} else {
+				SET_C(false);
+			}
+			REG16(SP) += val;
+			return OK;
+		};
+
 	}
 
 	// Returns a status code.
