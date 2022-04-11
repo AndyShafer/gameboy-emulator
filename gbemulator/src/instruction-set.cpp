@@ -685,6 +685,220 @@ namespace gbemulator {
 			REG8(A) |= (c << 7);
 			return OK;
 		};
+
+		// CB Prefixed Instructions
+		for(int i = 0x0; i <= 0x7; ++i) {
+			if(i == 0x6) continue;
+			// RLC R
+			cbInstructions[i] = [&registers, i]() {
+				int c = GET_C();
+				SET_C(REG8(i) & (1 << 7));
+				REG8(i) <<= 1;
+				REG8(i) |= c;
+				SET_Z(REG8(i) == 0);
+				registers->setFlags("-00-");
+				return OK;
+			};
+			// RRC R
+			cbInstructions[i + 0x8] = [&registers, i]() {
+				SET_C(REG8(i) & 1);
+				REG8(i) >>= 1;
+				REG8(i) |= (GET_C() << 7);
+				SET_Z(REG8(i) == 0);
+				registers->setFlags("-00-");
+				return OK;
+			};
+			// RL R
+			cbInstructions[0x10 + i] = [&registers, i]() {
+				int c = GET_C();
+				SET_C(REG8(i) & (1 << 7));
+				REG8(i) <<= 1;
+				REG8(i) |= c;
+				SET_Z(REG8(i) == 0);
+				registers->setFlags("-00-");
+				return OK;
+			};
+			// RR R
+			cbInstructions[0x10 + i + 0x8] = [&registers, i]() {
+				int c = GET_C();
+				SET_C(REG8(A) & 1);
+				REG8(i) >>= 1;
+				REG8(i) |= (c << 7);
+				SET_Z(REG8(i) == 0);
+				registers->setFlags("-00-");
+				return OK;
+			};
+			// SLA R
+			cbInstructions[0x20 + i] = [&registers, i]() {
+				SET_C(REG8(i) & (1 << 7));
+				REG8(i) <<= 1;
+				SET_Z(REG8(i) == 0);
+				registers->setFlags("-00-");
+				return  OK;
+			};
+			// SRA R
+			cbInstructions[0x20 + i + 0x8] = [&registers, i]() {
+				SET_C(REG8(i) & 1);
+				REG8(i) >>= 1;
+				// b7=b7
+				REG8(i) |= (REG8(i) & (1 << 6)) << 1;
+				SET_Z(REG8(i) == 0);
+				registers->setFlags("-00-");
+				return  OK;
+			};
+			// SWAP R
+			cbInstructions[0x30 + i] = [&registers, i]() {
+				REG8(i) = (LOWER_NIBBLE(REG8(i)) << 4) + UPPER_NIBBLE_SHIFTED(REG8(i));
+				SET_Z(REG8(i) == 0);
+				registers->setFlags("-000");
+				return OK;
+			};
+			// SRL R
+			cbInstructions[0x30 + i + 0x8] = [&registers, i]() {
+				SET_C(REG8(i) & 1);
+				REG8(i) >>= 1;
+				SET_Z(REG8(i) == 0);
+				registers->setFlags("-00-");
+				return  OK;
+			};
+			for(int j = 0; j <= 3; ++j) {
+				// BIT n,R (even)
+				cbInstructions[0x10 * j + 0x40 + i] = [&registers, i, j]() {
+					SET_Z(REG8(i) & (1 << (j*2)));
+					registers->setFlags("-01-");
+					return OK;
+				};
+				// BIT n,R (odd)
+				cbInstructions[0x10 * j + 0x48 + i] = [&registers, i, j]() {
+					SET_Z(REG8(i) & (1 << (j*2+1)));
+					registers->setFlags("-01-");
+					return OK;
+				};
+				// RES n,R (even)
+				cbInstructions[0x10 * j + 0x50 + i] = [&registers, i, j]() {
+					REG8(i) &= ~(1 << (j*2));
+					return OK;
+				};
+				// RES n,R (odd)
+				cbInstructions[0x10 * j + 0x58 + i] = [&registers, i, j]() {
+					REG8(i) &= ~(1 << (j*2+1));
+					return OK;
+				};
+				// SET n,R (even)
+				cbInstructions[0x10 * j + 0x60 + i] = [&registers, i, j]() {
+					REG8(i) |= (1 << (j*2));
+					return OK;
+				};
+				// SET n,R (odd)
+				cbInstructions[0x10 * j + 0x68 + i] = [&registers, i, j]() {
+					REG8(i) |= (1 << (j*2+1));
+					return OK;
+				};
+			}
+		}
+		// RLC (HL)
+		cbInstructions[0x06] = [&registers, &memory]() {
+			int c = GET_C();
+			SET_C(HL_READ & (1 << 7));
+			HL_WRITE((HL_READ << 1) | c);
+			SET_Z(HL_READ == 0);
+			registers->setFlags("-00-");
+			return OK;
+		};
+		// RRC (HL)
+		cbInstructions[0x0E] = [&registers, &memory]() {
+			SET_C(HL_READ & 1);
+			HL_WRITE((HL_READ >> 1) | (GET_C() << 7));
+			SET_Z(HL_READ == 0);
+			registers->setFlags("-00-");
+			return OK;
+		};
+		// RL (HL)
+		cbInstructions[0x16] = [&registers, &memory]() {
+			int c = GET_C();
+			SET_C(HL_READ & (1 << 7));
+			HL_WRITE((HL_READ << 1) | c);
+			SET_Z(HL_READ == 0);
+			registers->setFlags("-00-");
+			return OK;
+		};
+		// RR (HL)
+		cbInstructions[0x1E] = [&registers, &memory]() {
+			int c = GET_C();
+			SET_C(HL_READ & 1);
+			HL_WRITE((HL_READ >> 1) | (c << 7));
+			SET_Z(HL_READ == 0);
+			registers->setFlags("-00-");
+			return OK;
+		};
+		// SLA (HL)
+		cbInstructions[0x26] = [&registers, &memory]() {
+			SET_C(HL_READ & (1 << 7));
+			HL_WRITE(HL_READ << 1);
+			SET_Z(HL_READ == 0);
+			registers->setFlags("-00-");
+			return  OK;
+		};
+		// SRA (HL)
+		cbInstructions[0x2E] = [&registers, &memory]() {
+			SET_C(HL_READ & 1);
+			// b7=b7
+			HL_WRITE((HL_READ >> 1) | (HL_READ & (1 << 7)));
+			SET_Z(HL_READ == 0);
+			registers->setFlags("-00-");
+			return  OK;
+		};
+		// SWAP (HL)
+		cbInstructions[0x36] = [&registers, &memory]() {
+			uint val = HL_READ;
+			HL_WRITE((LOWER_NIBBLE(val) << 4) + UPPER_NIBBLE_SHIFTED(val));
+			SET_Z(HL_READ == 0);
+			registers->setFlags("-000");
+			return OK;
+		};
+		// SRL (HL)
+		cbInstructions[0x3E] = [&registers, &memory]() {
+			SET_C(HL_READ & 1);
+			HL_WRITE(HL_READ >> 1);
+			SET_Z(HL_READ == 0);
+			registers->setFlags("-00-");
+			return  OK;
+		};
+		for(int i = 0; i <= 3; ++i) {
+			// BIT n,(HL) (even)
+			cbInstructions[0x46 + 0x10 * i] = [&registers, &memory, i]() {
+				SET_Z(HL_READ & (1 << (i*2)));
+				registers->setFlags("-01-");
+				return OK;
+			};
+			// BIT n,(HL) (odd)
+			cbInstructions[0x4E + 0x10 * i] = [&registers, &memory, i]() {
+				SET_Z(HL_READ & (1 << (i*2+1)));
+				registers->setFlags("-01-");
+				return OK;
+			};
+			// RES n,(HL) (even)
+			cbInstructions[0x86 + 0x10 * i] = [&registers, &memory, i]() {
+				HL_WRITE(HL_READ & ~(1 << (i*2)));
+				return OK;
+			};
+			// RES n,(HL) (odd)
+			cbInstructions[0x8E + 0x10 * i] = [&registers, &memory, i]() {
+				HL_WRITE(HL_READ & ~(1 << (i*2+1)));
+				return OK;
+			};
+			// SET n,(HL) (even)
+			cbInstructions[0xC6 + 0x10 * i] = [&registers, &memory, i]() {
+				HL_WRITE(HL_READ | (1 << (i*2)));
+				return OK;
+			};
+			// SET n,(HL) (odd)
+			cbInstructions[0xCE + 0x10 * i] = [&registers, &memory, i]() {
+				HL_WRITE(HL_READ | (1 << (i*2+1)));
+				return OK;
+			};
+		}
+
 		// CB
 		instructions[0xCB] = [this, &registers, &memory]() {
 			uint8_t cb_op = N;
@@ -868,12 +1082,12 @@ namespace gbemulator {
 		instructions[0xFB] = [&registers]() {
 			registers->registers16.IME = true;
 			return OK;
-		}
+		};
 		// DI
 		instructions[0xF3] = [&registers]() {
 			registers->registers16.IME = false;
 			return OK;
-		}
+		};
 	}
 
 	// Returns a status code.
