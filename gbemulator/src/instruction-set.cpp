@@ -29,6 +29,15 @@
 #define LOWER_NIBBLE(X) ((X) & 0x0F)
 #define UPPER_NIBBLE(X) ((X) & 0xF0)
 #define UPPER_NIBBLE_SHIFTED(X) (UPPER_NIBBLE(X) >> 4)
+#define CALL(ADDR) \
+	REG16(SP) -= 2; \
+	if(!WRITE16(REG16(SP), REG16(PC))) { \
+		return WRITE_FAIL; \
+	} \
+	REG16(PC) = ADDR
+#define RET() \
+	REG16(PC) = READ16(REG16(SP)); \
+	REG16(SP) += 2
 
 namespace gbemulator {
 
@@ -682,6 +691,181 @@ namespace gbemulator {
 			return this->cbInstructions[cb_op]();
 		};
 		
+		// Control Flow
+		// JP nn
+		instructions[0xC3] = [&registers, &memory]() {
+			REG16(PC) = NN;
+			return OK;
+		};
+		// JP HL
+		instructions[0xE9] = [&registers]() {
+			REG16(PC) = REG16(HL);
+			return OK;
+		};
+		// JP NZ
+		instructions[0xC2] = [&registers, &memory]() {
+			uint16_t nn = NN;
+			if(!GET_Z()) {
+				REG16(PC) = nn;
+			}
+			return OK;
+		};
+		// JP NC
+		instructions[0xD2] = [&registers, &memory]() {
+			uint16_t nn = NN;
+			if(!GET_C()) {
+				REG16(PC) = nn;
+			}
+			return OK;
+		};
+		// JP Z
+		instructions[0xCA] = [&registers, &memory]() {
+			uint16_t nn = NN;
+			if(GET_Z()) {
+				REG16(PC) = nn;
+			}
+			return OK;
+		};
+		// JP C 
+		instructions[0xDA] = [&registers, &memory]() {
+			uint16_t nn = NN;
+			if(GET_C()) {
+				REG16(PC) = nn;
+			}
+			return OK;
+		};
+		// JR e
+		instructions[0x18] = [&registers, &memory]() {
+			int8_t e = SIGNED_IMM;
+			REG16(PC) += e;
+			return OK;
+		};
+		// JR NZ,e
+		instructions[0x20] = [&registers, &memory]() {
+			uint8_t e = SIGNED_IMM;
+			if(!GET_Z()) {
+				REG16(PC) = e;
+			}
+			return OK;
+		};
+		// JR NC,e
+		instructions[0x30] = [&registers, &memory]() {
+			uint16_t e = SIGNED_IMM;
+			if(!GET_C()) {
+				REG16(PC) = e;
+			}
+			return OK;
+		};
+		// JR Z,e
+		instructions[0x28] = [&registers, &memory]() {
+			uint16_t e = SIGNED_IMM;
+			if(GET_Z()) {
+				REG16(PC) = e;
+			}
+			return OK;
+		};
+		// JR C,e
+		instructions[0x38] = [&registers, &memory]() {
+			uint16_t e = SIGNED_IMM;
+			if(GET_C()) {
+				REG16(PC) = e;
+			}
+			return OK;
+		};
+		// CALL nn
+		instructions[0xCD] = [&registers, &memory]() {
+			uint16_t nn = NN;
+			CALL(nn);
+			return OK;
+		};
+		// CALL NZ,nn
+		instructions[0xC4] = [&registers, &memory]() {
+			uint16_t nn = NN;
+			if(!GET_Z()) {
+				CALL(nn);
+			}
+			return OK;
+		};
+		// CALL NC,nn
+		instructions[0xD4] = [&registers, &memory]() {
+			uint16_t nn = NN;
+			if(!GET_C()) {
+				CALL(nn);
+			}
+			return OK;
+		};
+		// CALL Z,nn
+		instructions[0xCC] = [&registers, &memory]() {
+			uint16_t nn = NN;
+			if(GET_Z()) {
+				CALL(nn);
+			}
+			return OK;
+		};
+		// CALL C,nn
+		instructions[0xDC] = [&registers, &memory]() {
+			uint16_t nn = NN;
+			if(GET_C()) {
+				CALL(nn);
+			}
+			return OK;
+		};
+		// RET
+		instructions[0xC9] = [&registers, &memory]() {
+			RET();
+			return OK;
+		};
+		// RET NZ
+		instructions[0xC0] = [&registers, &memory]() {
+			uint16_t nn = NN;
+			if(!GET_Z()) {
+				RET();
+			}
+			return OK;
+		};
+		// RET NC
+		instructions[0xD0] = [&registers, &memory]() {
+			uint16_t nn = NN;
+			if(!GET_C()) {
+				RET();
+			}
+			return OK;
+		};
+		// RET Z
+		instructions[0xC8] = [&registers, &memory]() {
+			uint16_t nn = NN;
+			if(GET_Z()) {
+				RET();
+			}
+			return OK;
+		};
+		// RET C
+		instructions[0xD8] = [&registers, &memory]() {
+			uint16_t nn = NN;
+			if(GET_C()) {
+				RET();
+			}
+			return OK;
+		};
+		// RETI
+		instructions[0xD9] = [&registers, &memory]() {
+			RET();
+			// TODO: Set IME=1
+			return OK;
+		};
+		// RST n
+		for(int i = 0x0; i <= 0x3; i++) {
+			instructions[0xC7 + (i << 4)] = [&registers, &memory, i]() {
+				CALL(0x10 * i);
+				return OK;
+			};
+			instructions[0xCF + (i << 4)] = [&registers, &memory, i]() {
+				CALL(0x08 + 0x10 * i);
+				return OK;
+			};
+		}
+
+
 
 	}
 
